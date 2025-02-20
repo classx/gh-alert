@@ -49,12 +49,21 @@ struct Args {
     /// Validate config file only
     #[arg(short, long, default_value = "false")]
     test: bool,
+    /// Print debug information
+    #[arg(short = 'd', long = "debug", default_value = "false")]
+    debug: bool,
 }
 
 // struct functions
 // define default values for bool fields
 fn default_bool() -> bool {
     false
+}
+
+impl Repo {
+    fn run(&self) {
+        println!("Repo run {}", &self.name);
+    }
 }
 
 // Functions
@@ -90,5 +99,14 @@ fn main() {
         println!("Config file is valid.");
         return;
     }
-    println!("{:?}", config);
+    if args.debug {
+        println!("{:?}", config);
+    }
+
+    for repo in config.repos {
+        if repo.skip {
+            continue;
+        }
+        repo.run();
+    }
 }
