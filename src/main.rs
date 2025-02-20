@@ -52,7 +52,7 @@ struct Args {
 }
 
 // struct functions
-
+// define default values for bool fields
 fn default_bool() -> bool {
     false
 }
