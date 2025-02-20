@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::{self};
 use tabled::{Table, Tabled};
 
-
 // Structs
 
 #[derive(Tabled)]
@@ -33,6 +32,8 @@ struct Repo {
     name: String,
     url: String,
     branch: String,
+    skip: bool,
+    silent: bool,
     files: Vec<String>,
 }
 
@@ -41,7 +42,7 @@ struct Repo {
 #[command(version, about, long_about = None)]
 struct Args {
     /// Config file path
-    #[arg(short = 'f', long = "file" )]
+    #[arg(short = 'f', long = "file")]
     config: String,
     /// Validate config file only
     #[arg(short, long, default_value = "false")]
@@ -56,8 +57,16 @@ fn load_config(file: &str) -> Config {
 
 fn validation(config: &Config) {
     let statuses = vec![
-        Yamlstatus { name: "Project",    value: &config.project, status: "OK" },
-        Yamlstatus { name: "Project path",    value: &config.path, status: "OK" },
+        Yamlstatus {
+            name: "Project",
+            value: &config.project,
+            status: "OK",
+        },
+        Yamlstatus {
+            name: "Project path",
+            value: &config.path,
+            status: "OK",
+        },
     ];
     let table = Table::new(statuses);
     println!("{table}");
@@ -73,5 +82,3 @@ fn main() {
     }
     println!("{:?}", config);
 }
-
-

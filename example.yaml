@@ -8,6 +8,8 @@ repos:
   - name: test
     url: http://
     branch: master
+    skip: true
+    silent: true
     files:
       - cd/README.md
   - name: test2
