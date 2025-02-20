@@ -32,7 +32,9 @@ struct Repo {
     name: String,
     url: String,
     branch: String,
+    #[serde(default = "default_bool")]
     skip: bool,
+    #[serde(default = "default_bool")]
     silent: bool,
     files: Vec<String>,
 }
@@ -48,6 +50,14 @@ struct Args {
     #[arg(short, long, default_value = "false")]
     test: bool,
 }
+
+// struct functions
+
+fn default_bool() -> bool {
+    false
+}
+
+// Functions
 
 fn load_config(file: &str) -> Config {
     let f = std::fs::File::open(file).expect("Could not open file.");
