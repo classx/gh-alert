@@ -1,0 +1,19 @@
+project: gh-alert
+path: /tmp/gh-alert/repos
+message:
+  - name: ntfy
+    url: http://
+
+repos:
+  - name: test
+    url: http://
+    branch: master
+    files:
+      - cd/README.md
+  - name: test2
+    url: http://test2
+    branch: master_next
+    files:
+      - cd/function.sh
+
+update_frequency_sec: 120
