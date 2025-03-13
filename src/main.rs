@@ -71,7 +71,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Add a new item
-    Init {
+    Generate {
         /// Name of the item to add
         //#[arg(short = 'f', long = "file", default_value = "")]
         name: String,
@@ -149,7 +149,7 @@ fn generate_config_yaml(config: &Config) -> std::io::Result<()> {
 fn main() {
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Init { name } => {
+        Commands::Generate { name } => {
             let config = Config {
                 project: name.to_string(),
                 path: "/dir".to_string(),
