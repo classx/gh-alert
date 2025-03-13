@@ -76,6 +76,15 @@ enum Commands {
         //#[arg(short = 'f', long = "file", default_value = "")]
         name: String,
     },
+    /// Init project, create dir, db
+    Init {
+        /// Config file name
+        #[arg(short = 'c', long = "config", default_value = "config.yaml")]
+        config: String,
+        /// Validate config [defalt: false]
+        #[arg(short = 'v', long = "validate", default_value = "false")]
+        validate: bool,
+    },
     /// Remove an item by its ID
     Remove {
         /// ID of the item to remove
@@ -168,6 +177,9 @@ fn main() {
                 }],
             };
             let _ = generate_config_yaml(&config);
+        }
+        Commands::Init { config, validate } => {
+            println!("init");
         }
         Commands::Remove { id } => {
             println!("Removing item with ID: {}", id);
