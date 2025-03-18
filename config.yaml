@@ -1,0 +1,9 @@
+repositories:
+  - owner: "orgname"
+    repo: "reponame"
+    branch: "main"
+    token: "AAAAAAAABBBBBBBBBBBBCCCCCCCCCCCCCCCCCCC"
+    files:
+      - "build.sh"
+state_file: "state.yaml"
+notification_command: "notify-send"
