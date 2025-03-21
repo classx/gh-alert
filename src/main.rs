@@ -84,8 +84,10 @@ fn check_for_changes(config: &Config) -> Result<(), Box<dyn std::error::Error>> 
             }
         }
 
-        println!("Changes found in the following repositories: {}",
-            changed_repos.join(", "));
+        println!(
+            "Changes found in the following repositories: {}",
+            changed_repos.join(", ")
+        );
 
         let state_file = File::create(&config.state_file)?;
         serde_yaml::to_writer(state_file, &current_state)?;
@@ -101,4 +103,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     check_for_changes(&config)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_config_deserialization() {
+        let config_yaml = r#"
+            repositories:
+              - owner: test-owner
+                repo: test-repo
+                token: test-token
+                branch: main
+                files:
+                  - test.txt
+            state_file: state.yaml
+            notification_command: notify
+        "#;
+        let config: Config = serde_yaml::from_str(config_yaml).unwrap();
+        assert_eq!(config.repositories[0].owner, "test-owner");
+        assert_eq!(config.repositories[0].repo, "test-repo");
+        assert_eq!(config.repositories[0].token, "test-token");
+        assert_eq!(config.repositories[0].branch, "main");
+        assert_eq!(config.repositories[0].files[0], "test.txt");
+        assert_eq!(config.state_file, "state.yaml");
+        assert_eq!(config.notification_command, "notify");
+    }
+
+    #[test]
+    fn test_state_serialization() {
+        let mut files = HashMap::new();
+        files.insert("owner/repo/file.txt".to_string(), "hash123".to_string());
+        let state = State { files };
+        let serialized = serde_yaml::to_string(&state).unwrap();
+        let deserialized: State = serde_yaml::from_str(&serialized).unwrap();
+        assert_eq!(
+            deserialized.files.get("owner/repo/file.txt").unwrap(),
+            "hash123"
+        );
+    }
+
+    #[test]
+    fn test_get_file_hash() {
+        let client = Client::new();
+        let url = "https://raw.githubusercontent.com/rust-lang/rust/refs/heads/master/README.md";
+        let hash = get_file_hash(&client, url).unwrap();
+        println!("SHA: {}", hash);
+        assert!(!hash.is_empty());
+    }
+
+    #[test]
+    fn test_check_for_changes() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let state_path = temp_file.path().to_str().unwrap();
+
+        let config = Config {
+            repositories: vec![Repository {
+                owner: "rust-lang".to_string(),
+                repo: "rust".to_string(),
+                token: "".to_string(),
+                branch: "master".to_string(),
+                files: vec!["README.md".to_string()],
+            }],
+            state_file: state_path.to_string(),
+            notification_command: "echo 'changed'".to_string(),
+        };
+
+        // First run should detect changes
+        let _ = check_for_changes(&config);
+
+        // Second run should not detect changes
+        let _ = check_for_changes(&config);
+    }
 }
