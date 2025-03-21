@@ -1,188 +1,104 @@
-use clap::{Parser, Subcommand};
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use serde_yaml::{self};
-use tabled::{Table, Tabled};
+use serde_yaml;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs::{self, File};
+//use std::io::{self, Read, Write};
 
-// Structs
-
-#[derive(Tabled)]
-struct Yamlstatus<'a> {
-    name: &'a str,
-    value: &'a str,
-    status: &'a str,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Config {
-    project: String,
-    path: String,
-    update_frequency_sec: u32,
-    message: Vec<Message>,
-    repos: Vec<Repo>,
+    repositories: Vec<Repository>,
+    state_file: String,
+    notification_command: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Message {
-    name: String,
-    url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Repo {
-    name: String,
-    url: String,
+#[derive(Debug, Deserialize, Serialize)]
+struct Repository {
+    owner: String,
+    repo: String,
+    token: String,
     branch: String,
-    #[serde(default = "default_bool")]
-    skip: bool,
-    #[serde(default = "default_bool")]
-    silent: bool,
     files: Vec<String>,
 }
 
-/// Github monitoring tool
-// #[derive(Parser, Debug)]
-// #[command(version, about, long_about = None)]
-// struct Args {
-//     /// Config file path
-//     #[arg(short = 'f', long = "file")]
-//     config: String,
-//     /// Validate config file only
-//     #[arg(short, long, default_value = "false")]
-//     test: bool,
-//     /// Print debug information
-//     #[arg(short = 'd', long = "debug", default_value = "false")]
-//     debug: bool,
-// }
-
-/// CLI tool with subcommands
-#[derive(Parser, Debug)]
-#[command(
-    name = "Github monitoring tool",
-    version = "1.0",
-    about = "A tool with subcommands"
-)]
-struct Cli {
-    /// Subcommands for specific actions
-    #[command(subcommand)]
-    command: Commands,
+#[derive(Debug, Deserialize, Serialize)]
+struct State {
+    files: HashMap<String, String>,
 }
 
-/// Define available subcommands
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Add a new item
-    Generate {
-        /// Name of the item to add
-        //#[arg(short = 'f', long = "file", default_value = "")]
-        name: String,
-    },
-    /// Init project, create dir, db
-    Init {
-        /// Config file name
-        #[arg(short = 'c', long = "config", default_value = "config.yaml")]
-        config: String,
-        /// Validate config [defalt: false]
-        #[arg(short = 'v', long = "validate", default_value = "false")]
-        validate: bool,
-    },
-    /// Remove an item by its ID
-    Remove {
-        /// ID of the item to remove
-        id: u32,
-    },
+fn get_file_hash(client: &Client, url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let response = client.get(url).send()?;
+    let content = response.text()?;
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    let hash = format!("{:x}", hasher.finalize());
+    Ok(hash)
 }
 
-// struct functions
-// define default values for bool fields
-fn default_bool() -> bool {
-    false
-}
-
-impl Repo {
-    fn run(&self) {
-        println!("Repo run {}", &self.name);
+fn get_current_state(config: &Config) -> Result<State, Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let mut files = HashMap::new();
+    for repo in &config.repositories {
+        for file in &repo.files {
+            let url = format!(
+                "https://raw.githubusercontent.com/{}/{}/refs/heads/{}/{}?token={}",
+                repo.owner, repo.repo, repo.branch, file, repo.token
+            );
+            let hash = get_file_hash(&client, &url)?;
+            files.insert(format!("{}/{}/{}", repo.owner, repo.repo, file), hash);
+        }
     }
+    Ok(State { files })
 }
 
-// Functions
-
-fn load_config(file: &str) -> Config {
-    let f = std::fs::File::open(file).expect("Could not open file.");
-    let scrape_config: Config = serde_yaml::from_reader(f).expect("Could not read values.");
-    scrape_config
-}
-
-fn validation(config: &Config) {
-    let statuses = vec![
-        Yamlstatus {
-            name: "Project",
-            value: &config.project,
-            status: "OK",
+fn check_for_changes(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let current_state = get_current_state(config)?;
+    let previous_state: State = match fs::read_to_string(&config.state_file) {
+        Ok(s) => serde_yaml::from_str(&s)?,
+        Err(_) => State {
+            files: HashMap::new(),
         },
-        Yamlstatus {
-            name: "Project path",
-            value: &config.path,
-            status: "OK",
-        },
-    ];
-    let table = Table::new(statuses);
-    println!("{table}");
-}
+    };
+    if current_state.files != previous_state.files {
+        let mut changed_repos = Vec::new();
+        for (file_key, current_hash) in &current_state.files {
+            if let Some(previous_hash) = previous_state.files.get(file_key) {
+                if current_hash != previous_hash {
+                    let parts: Vec<&str> = file_key.split('/').collect();
+                    if parts.len() >= 2 {
+                        let repo_name = format!("{}/{}", parts[0], parts[1]);
+                        if !changed_repos.contains(&repo_name) {
+                            changed_repos.push(repo_name);
+                        }
+                    }
+                }
+            } else {
+                let parts: Vec<&str> = file_key.split('/').collect();
+                if parts.len() >= 2 {
+                    let repo_name = format!("{}/{}", parts[0], parts[1]);
+                    if !changed_repos.contains(&repo_name) {
+                        changed_repos.push(repo_name);
+                    }
+                }
+            }
+        }
 
-fn generate_config_yaml(config: &Config) -> std::io::Result<()> {
-    let yaml_str = serde_yaml::to_string(&config).unwrap();
-    std::fs::write("config.yaml", yaml_str)?;
+        println!("Changes found in the following repositories: {}",
+            changed_repos.join(", "));
+
+        let state_file = File::create(&config.state_file)?;
+        serde_yaml::to_writer(state_file, &current_state)?;
+    }
+
     Ok(())
 }
 
-// fn main() {
-//     let args = Args::parse();
-//     let config = load_config(&args.config);
-//     if args.test {
-//         validation(&config);
-//         println!("Config file is valid.");
-//         return;
-//     }
-//     if args.debug {
-//         println!("{:?}", config);
-//     }
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config_file = fs::read_to_string("config.yaml")?;
+    let config: Config = serde_yaml::from_str(&config_file)?;
 
-//     for repo in config.repos {
-//         if repo.skip {
-//             continue;
-//         }
-//         repo.run();
-//     }
-// }
+    check_for_changes(&config)?;
 
-fn main() {
-    let cli = Cli::parse();
-    match &cli.command {
-        Commands::Generate { name } => {
-            let config = Config {
-                project: name.to_string(),
-                path: "/dir".to_string(),
-                update_frequency_sec: 3600,
-                message: vec![Message {
-                    name: "name".to_string(),
-                    url: "url".to_string(),
-                }],
-                repos: vec![Repo {
-                    name: "repo name".to_string(),
-                    url: "url".to_string(),
-                    branch: "main".to_string(),
-                    skip: false,
-                    silent: false,
-                    files: vec!["file".to_string()],
-                }],
-            };
-            let _ = generate_config_yaml(&config);
-        }
-        Commands::Init { config, validate } => {
-            println!("init");
-        }
-        Commands::Remove { id } => {
-            println!("Removing item with ID: {}", id);
-        }
-    }
+    Ok(())
 }
